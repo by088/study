@@ -1,0 +1,14 @@
+﻿services:
+  studyseatops-backend:
+    build:
+      context: ./backend
+    ports:
+      - "8001:8001"
+
+  studyseatops-frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - studyseatops-backend
