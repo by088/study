@@ -73,15 +73,17 @@ def create_reservation(
     if not seat or seat.room_id != payload.room_id or not seat.enabled:
         raise HTTPException(status_code=404, detail="Seat not found")
 
-    same_day_pending = session.exec(
+    same_day_active = session.exec(
         select(Reservation).where(
             Reservation.user_id == current.id,
             Reservation.reserve_date == payload.reserve_date,
             Reservation.status.in_([ReservationStatus.pending, ReservationStatus.active]),
         )
-    ).first()
-    if same_day_pending:
-        raise HTTPException(status_code=400, detail="Only one active reservation per day")
+    ).all()
+    for existing in same_day_active:
+        e_start = datetime.combine(existing.reserve_date, existing.start_time)
+        if _hour_window_conflict(start_at, payload.hours, e_start, existing.hours):
+            raise HTTPException(status_code=400, detail="Time conflict with your existing reservation")
 
     conflicts = session.exec(
         select(Reservation).where(
@@ -174,15 +176,17 @@ def legacy_booking(
     if payload.reservation_time + payload.reservation_hours > closes:
         return {"success": False, "code": 403}
 
-    pending_or_active = session.exec(
+    user_reservations = session.exec(
         select(Reservation).where(
             Reservation.user_id == current.id,
             Reservation.reserve_date == date.today(),
             Reservation.status.in_([ReservationStatus.pending, ReservationStatus.active]),
         )
-    ).first()
-    if pending_or_active:
-        return {"success": False, "code": 405}
+    ).all()
+    for ur in user_reservations:
+        ur_start = datetime.combine(ur.reserve_date, ur.start_time)
+        if _hour_window_conflict(start_dt, payload.reservation_hours, ur_start, ur.hours):
+            return {"success": False, "code": 405, "message": "你在该时间段已有预约，时间冲突"}
 
     seat = session.exec(
         select(Seat).where(

@@ -1,5 +1,12 @@
 <template>
   <section class="student-page">
+    <!-- ====== Toast 消息提示 ====== -->
+    <transition-group name="toast-fade" tag="div" class="toast-container">
+      <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type">
+        {{ t.msg }}
+      </div>
+    </transition-group>
+
     <header class="page-head">
       <div>
         <span class="eyebrow">Student Console</span>
@@ -52,7 +59,7 @@
       </div>
       <div class="metric">
         <span>当前预约</span>
-        <strong>{{ invalidReservation ? "待签到" : "无" }}</strong>
+        <strong>{{ currentReservations.length || "无" }}</strong>
       </div>
       <div class="metric">
         <span>历史记录</span>
@@ -60,10 +67,36 @@
       </div>
     </section>
 
+    <!-- ====== 步骤流程引导 ====== -->
+    <nav v-if="token" class="step-bar">
+      <div class="step" :class="{ active: currentStep === 1, done: currentStep > 1 }">
+        <span class="step-num">1</span>
+        <span class="step-label">选择房间</span>
+      </div>
+      <div class="step-line" :class="{ filled: currentStep > 1 }"></div>
+      <div class="step" :class="{ active: currentStep === 2, done: currentStep > 2 }">
+        <span class="step-num">2</span>
+        <span class="step-label">选择时间</span>
+      </div>
+      <div class="step-line" :class="{ filled: currentStep > 2 }"></div>
+      <div class="step" :class="{ active: currentStep === 3, done: currentStep > 3 }">
+        <span class="step-num">3</span>
+        <span class="step-label">点击座位</span>
+      </div>
+      <div class="step-line" :class="{ filled: currentStep > 3 }"></div>
+      <div class="step" :class="{ active: currentStep === 4 }">
+        <span class="step-num">4</span>
+        <span class="step-label">提交预约</span>
+      </div>
+    </nav>
+
     <section v-if="token" class="work-grid">
       <div class="panel catalog-panel">
         <div class="panel-head">
-          <h3>空间筛选</h3>
+          <h3>
+            <span class="step-badge">1</span>
+            空间筛选
+          </h3>
           <button class="btn ghost" @click="loadRooms">刷新</button>
         </div>
 
@@ -111,18 +144,18 @@
 
       <div class="panel booking-panel">
         <div class="panel-head">
-          <h3>座位预约</h3>
-          <span class="chip">{{ selectedRoom ? selectedRoom.room_name : "未选择房间" }}</span>
+          <h3>
+            <span class="step-badge">2-4</span>
+            座位预约
+          </h3>
+          <span class="chip">{{ selectedRoom ? selectedRoom.room_name : "请先选择房间" }}</span>
         </div>
 
+        <!-- 时间与时长选择 -->
         <div class="booking-form">
           <label>
             <span>开始小时</span>
-            <input v-model.number="reserve.time_start" type="number" min="7" max="22" />
-          </label>
-          <label>
-            <span>座位号</span>
-            <input v-model="reserve.seat_number" placeholder="1" />
+            <input v-model.number="reserve.time_start" type="number" min="7" max="22" @change="onTimeChange" />
           </label>
           <label>
             <span>预约时长</span>
@@ -133,25 +166,50 @@
               <option :value="4">4 小时</option>
             </select>
           </label>
+          <label>
+            <span>已选座位</span>
+            <div class="selected-seat-display">
+              <strong v-if="reserve.seat_number">{{ reserve.seat_number }} 号座位</strong>
+              <span v-else class="hint">请在下方座位图中点击选择</span>
+            </div>
+          </label>
         </div>
 
         <div class="action-row">
-          <button class="btn secondary" :disabled="!selectedRoom" @click="loadSeatStatus">查看座位</button>
-          <button class="btn primary" :disabled="!selectedRoom" @click="book">提交预约</button>
+          <button class="btn secondary" :disabled="!selectedRoom" @click="loadSeatStatus">
+            查看座位状态
+          </button>
+          <button
+            class="btn primary"
+            :disabled="!selectedRoom || !reserve.seat_number"
+            @click="book"
+          >
+            提交预约
+          </button>
+          <span v-if="!reserve.seat_number && seatCells.length" class="hint-inline">
+            请先在座位图中点选一个座位
+          </span>
         </div>
 
+        <!-- 座位图 - 可点击选座 -->
         <div class="seat-board">
           <div
             v-for="seat in seatCells"
             :key="seat.index"
             class="seat"
-            :class="[seat.kind, { power: seat.power }]"
+            :class="[
+              seat.kind,
+              { power: seat.power, selected: String(reserve.seat_number) === String(seat.index), clickable: seat.kind !== 'blocked' }
+            ]"
             :title="seat.title"
+            @click="pickSeat(seat)"
           >
             <span>{{ seat.index }}</span>
             <small>{{ seat.label }}</small>
           </div>
-          <div v-if="!seatCells.length" class="empty">查询后显示座位图</div>
+          <div v-if="!seatCells.length" class="empty">
+            {{ selectedRoom ? '点击「查看座位状态」加载座位图' : '请先在左侧选择房间' }}
+          </div>
         </div>
 
         <div class="legend">
@@ -159,25 +217,35 @@
           <span><i class="limited"></i>时长受限</span>
           <span><i class="blocked"></i>不可预约</span>
           <span><i class="power-dot"></i>可充电</span>
+          <span><i class="selected-dot"></i>已选中</span>
         </div>
       </div>
 
       <div class="panel reservation-panel">
         <div class="panel-head">
-          <h3>当前预约</h3>
+          <h3>当前预约 <small v-if="currentReservations.length" class="count-badge">{{ currentReservations.length }}</small></h3>
           <button class="btn ghost" @click="loadInvalid">刷新</button>
         </div>
 
-        <div v-if="invalidReservation" class="reservation-ticket">
-          <strong>{{ invalidReservation.room_name }}</strong>
-          <span>座位 {{ invalidReservation.seat_number }}</span>
-          <span>{{ invalidReservation.date }} {{ invalidReservation.reservation_time }}</span>
-          <div class="action-row">
-            <button class="btn primary" @click="sign(invalidReservation.reservation_id)">签到</button>
-            <button class="btn danger" @click="cancel(invalidReservation.reservation_id)">取消</button>
+        <div v-if="currentReservations.length" class="reservation-list">
+          <div
+            v-for="r in currentReservations"
+            :key="r.reservation_id"
+            class="reservation-ticket"
+            :class="{ 'active-ticket': r.reservation_status === '1' }"
+          >
+            <strong>{{ r.room_name }}</strong>
+            <span>座位 {{ r.seat_number }}</span>
+            <span>{{ r.date }} {{ r.reservation_time }}（{{ r.reservation_hours }}小时）</span>
+            <span v-if="r.reservation_status === '0'" class="status-pill pending-pill">待签到</span>
+            <span v-else class="status-pill active-pill">已签到 · 使用中</span>
+            <div v-if="r.reservation_status === '0'" class="action-row">
+              <button class="btn primary" @click="sign(r.reservation_id)">签到</button>
+              <button class="btn danger" @click="cancel(r.reservation_id)">取消</button>
+            </div>
           </div>
         </div>
-        <div v-else class="empty">没有待签到预约</div>
+        <div v-else class="empty">暂无进行中的预约</div>
       </div>
 
       <div class="panel history-panel">
@@ -283,6 +351,17 @@ import {
   chatAssistant,
 } from "../api/client";
 
+// ---- Toast 消息提示系统 ----
+const toasts = ref([]);
+let toastId = 0;
+const showToast = (msg, type = "info", duration = 3000) => {
+  const id = ++toastId;
+  toasts.value.push({ id, msg, type });
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((t) => t.id !== id);
+  }, duration);
+};
+
 const token = ref("");
 const output = ref("就绪");
 const form = ref({ user_id: "stu2001", name: "演示学生", email: "stu2001@example.com", department: "计算机科学与技术学院", password: "Pass1234" });
@@ -293,10 +372,20 @@ const rooms = ref([]);
 const selectedCampus = ref("");
 const selectedBuilding = ref("");
 const selectedRoom = ref(null);
-const reserve = ref({ time_start: 20, seat_number: "1", reservation_hours: 2 });
+const reserve = ref({ time_start: 20, seat_number: "", reservation_hours: 2 });
 const seatStatusText = ref("");
 const invalidReservation = ref(null);
+const activeReservation = ref(null);
+const currentReservations = ref([]);
 const history = ref([]);
+
+// ---- 步骤引导计算 ----
+const currentStep = computed(() => {
+  if (!selectedRoom.value) return 1;
+  if (!seatCells.value.length) return 2;
+  if (!reserve.value.seat_number) return 3;
+  return 4;
+});
 
 const renderStatus = (s) => ({ "0": "未生效", "1": "已生效", "2": "已取消", "3": "已违约", "4": "已结束" }[s] || s);
 
@@ -316,10 +405,29 @@ const seatCells = computed(() => {
   });
 });
 
+// ---- 座位点击选座 ----
+const pickSeat = (seat) => {
+  if (seat.kind === "blocked") {
+    showToast("该座位不可预约", "error");
+    return;
+  }
+  reserve.value.seat_number = String(seat.index);
+  showToast(`已选中 ${seat.index} 号座位${seat.power ? "（可充电）" : ""}`, "success");
+};
+
+// 时间变更时自动刷新座位图
+const onTimeChange = () => {
+  if (selectedRoom.value) {
+    loadSeatStatus();
+  }
+};
+
 const safe = async (fn) => {
   try {
     await fn();
   } catch (e) {
+    const errMsg = e.response?.data?.detail || e.response?.data?.message || e.message || "操作失败";
+    showToast(errMsg, "error");
     output.value = JSON.stringify(e.response?.data || e.message, null, 2);
   }
 };
@@ -327,6 +435,11 @@ const safe = async (fn) => {
 const doRegister = () => safe(async () => {
   const res = await register(form.value);
   output.value = JSON.stringify(res.data, null, 2);
+  if (res.data.success === false) {
+    showToast(res.data.message || "注册失败，该学号可能已存在", "error");
+  } else {
+    showToast("注册成功！请点击「登录并加载数据」", "success");
+  }
 });
 
 const doLogin = () => safe(async () => {
@@ -338,6 +451,7 @@ const doLogin = () => safe(async () => {
   await loadInvalid();
   await loadHistory();
   output.value = JSON.stringify(res.data, null, 2);
+  showToast(`登录成功！欢迎 ${profile.value?.user_name || form.value.name}`, "success");
 });
 
 const loadProfile = async () => {
@@ -368,17 +482,34 @@ const loadRooms = () => safe(async () => {
 
 const selectRoom = (room) => {
   selectedRoom.value = room;
-  reserve.value.seat_number = "1";
+  reserve.value.seat_number = "";
   seatStatusText.value = "";
+  showToast(`已选择「${room.room_name}」，请设置时间后查看座位`, "info");
 };
 
 const loadSeatStatus = () => safe(async () => {
   const res = await seatStatus(token.value, selectedRoom.value.room_id, reserve.value.time_start);
   seatStatusText.value = res.data.data;
+  reserve.value.seat_number = "";
   output.value = JSON.stringify(res.data, null, 2);
+  showToast("座位状态已加载，点击绿色/黄色座位选择", "info");
 });
 
+const bookingErrors = {
+  400: "参数错误或座位不存在",
+  401: "信用分不足，无法预约",
+  402: "该座位在所选时间段已被占用",
+  403: "预约时长超出限制或超出关闭时间",
+  405: "今天已有一个未完成的预约，请先取消或签到后再预约",
+  406: "所选时间不在自习室开放时间范围内",
+  407: "该自习室仅对指定院系学生开放",
+};
+
 const book = () => safe(async () => {
+  if (!reserve.value.seat_number) {
+    showToast("请先在座位图中点选一个座位", "error");
+    return;
+  }
   const res = await bookSeat(token.value, {
     room_id: selectedRoom.value.room_id,
     seat_number: reserve.value.seat_number,
@@ -386,6 +517,12 @@ const book = () => safe(async () => {
     reservation_hours: reserve.value.reservation_hours,
   });
   output.value = JSON.stringify(res.data, null, 2);
+  if (res.data.success !== false) {
+    showToast(`预约成功！${selectedRoom.value.room_name} ${reserve.value.seat_number}号座位`, "success", 4000);
+  } else {
+    const errMsg = res.data.message || bookingErrors[res.data.code] || `预约失败（错误码 ${res.data.code}）`;
+    showToast(errMsg, "error", 4000);
+  }
   await loadInvalid();
   await loadHistory();
   await loadSeatStatus();
@@ -394,11 +531,23 @@ const book = () => safe(async () => {
 const loadInvalid = () => safe(async () => {
   const res = await reservationInvalid(token.value);
   invalidReservation.value = res.data.success ? res.data.data : null;
+  // 收集所有进行中的预约（待签到 + 已签到）
+  const histRes = await reservationHistory(token.value);
+  const allRecords = histRes.data.data || [];
+  currentReservations.value = allRecords.filter(
+    (r) => r.reservation_status === "0" || r.reservation_status === "1"
+  );
+  activeReservation.value = allRecords.find((r) => r.reservation_status === "1") || null;
 });
 
 const cancel = (id) => safe(async () => {
   const res = await cancelReservation(token.value, id);
   output.value = JSON.stringify(res.data, null, 2);
+  if (res.data.success === false) {
+    showToast("取消失败：该预约状态不允许取消", "error");
+  } else {
+    showToast("预约已取消", "info");
+  }
   await loadInvalid();
   await loadHistory();
   await loadProfile();
@@ -407,6 +556,11 @@ const cancel = (id) => safe(async () => {
 const sign = (id) => safe(async () => {
   const res = await signReservation(token.value, id);
   output.value = JSON.stringify(res.data, null, 2);
+  if (res.data.success === false) {
+    showToast(res.data.message || "签到失败", "error");
+  } else {
+    showToast("签到成功！", "success");
+  }
   await loadInvalid();
   await loadHistory();
 });
@@ -475,6 +629,143 @@ const quickChat = (text) => {
 .student-page {
   display: grid;
   gap: 18px;
+}
+
+/* ====== Toast 消息提示 ====== */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+  max-width: 400px;
+}
+
+.toast.success {
+  background: #265c53;
+}
+
+.toast.error {
+  background: #be5437;
+}
+
+.toast.info {
+  background: #334155;
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-fade-enter-from {
+  opacity: 0;
+  transform: translateX(40px);
+}
+
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
+/* ====== 步骤流程引导 ====== */
+.step-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(23, 32, 51, 0.06);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #f4f7fb;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.25s ease;
+}
+
+.step.active {
+  background: #265c53;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(38, 92, 83, 0.3);
+}
+
+.step.done {
+  background: #edf4f2;
+  color: #265c53;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: currentColor;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.step.active .step-num {
+  background: #fff;
+  color: #265c53;
+}
+
+.step.done .step-num {
+  background: #265c53;
+  color: #fff;
+}
+
+.step-line {
+  width: 40px;
+  height: 2px;
+  background: #d8dee8;
+  margin: 0 4px;
+  transition: background 0.25s;
+}
+
+.step-line.filled {
+  background: #265c53;
+}
+
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #265c53;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  margin-right: 8px;
+  padding: 0 6px;
 }
 
 .page-head {
@@ -561,11 +852,41 @@ select {
   background: #fff;
 }
 
+/* 已选座位展示 */
+.selected-seat-display {
+  min-height: 38px;
+  border: 1px solid #c8d0db;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+}
+
+.selected-seat-display strong {
+  color: #265c53;
+  font-size: 15px;
+}
+
+.selected-seat-display .hint {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.hint-inline {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 400;
+  align-self: center;
+}
+
 .action-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 12px;
+  align-items: center;
 }
 
 .btn {
@@ -574,6 +895,7 @@ select {
   border-radius: 8px;
   padding: 8px 12px;
   font-weight: 800;
+  cursor: pointer;
 }
 
 .btn:disabled {
@@ -649,6 +971,11 @@ select {
   margin-bottom: 14px;
 }
 
+.panel-head h3 {
+  display: flex;
+  align-items: center;
+}
+
 .chip,
 .status-pill {
   display: inline-flex;
@@ -680,6 +1007,7 @@ select {
   padding: 12px;
   color: #172033;
   text-align: left;
+  cursor: pointer;
 }
 
 .room-item.active {
@@ -725,6 +1053,27 @@ select {
   display: grid;
   place-items: center;
   background: #fff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.seat.clickable {
+  cursor: pointer;
+}
+
+.seat.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(38, 92, 83, 0.2);
+}
+
+.seat.selected {
+  border-color: #265c53 !important;
+  background: #265c53 !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 3px rgba(38, 92, 83, 0.25);
+}
+
+.seat.selected small {
+  color: rgba(255, 255, 255, 0.8) !important;
 }
 
 .seat span {
@@ -749,6 +1098,7 @@ select {
   border-color: #d7aaa0;
   background: #fff1ed;
   color: #8f3f28;
+  cursor: not-allowed;
 }
 
 .seat.power::after {
@@ -760,6 +1110,10 @@ select {
   height: 8px;
   border-radius: 50%;
   background: #265c53;
+}
+
+.seat.selected.power::after {
+  background: #fff;
 }
 
 .legend {
@@ -800,6 +1154,31 @@ select {
   background: #265c53;
 }
 
+.legend .selected-dot {
+  background: #265c53;
+  border-radius: 3px;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #265c53;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  margin-left: 6px;
+  padding: 0 6px;
+}
+
 .reservation-ticket {
   display: grid;
   gap: 8px;
@@ -807,6 +1186,21 @@ select {
   border-radius: 8px;
   background: #f8fafc;
   border: 1px dashed #c8d0db;
+}
+
+.reservation-ticket.active-ticket {
+  border-color: #265c53;
+  background: #edf4f2;
+}
+
+.pending-pill {
+  background: #f6e7c7 !important;
+  color: #8a5b18 !important;
+}
+
+.active-pill {
+  background: #265c53 !important;
+  color: #fff !important;
 }
 
 .table-wrap {
@@ -838,6 +1232,7 @@ th {
   color: #7a8797;
   border: 1px dashed #c8d0db;
   border-radius: 8px;
+  font-size: 13px;
 }
 
 .log-panel pre {
@@ -864,6 +1259,11 @@ th {
   .history-panel {
     grid-column: auto;
   }
+
+  .step-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -879,6 +1279,10 @@ th {
   .booking-form,
   .select-row {
     grid-template-columns: 1fr;
+  }
+
+  .step-label {
+    display: none;
   }
 }
 
