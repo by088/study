@@ -44,3 +44,16 @@ def sweep_defaults(session: Session, now: datetime):
             affected += 1
     session.commit()
     return affected
+
+
+def sweep_finished(session: Session, now: datetime):
+    active_items = session.exec(select(Reservation).where(Reservation.status == ReservationStatus.active)).all()
+    affected = 0
+    for r in active_items:
+        end_dt = datetime.combine(r.reserve_date, r.start_time) + timedelta(hours=r.hours)
+        if now >= end_dt:
+            r.status = ReservationStatus.finished
+            session.add(r)
+            affected += 1
+    session.commit()
+    return affected

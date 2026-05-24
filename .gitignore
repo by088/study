@@ -102,3 +102,15 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# IDE
+.idea/
+
+# Node
+node_modules/
+
+# SQLite database
+*.db
+
+# Frontend build output
+frontend/dist/

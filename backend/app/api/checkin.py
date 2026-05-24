@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ from app.core.db import get_session
 from app.domain.models import Reservation, ReservationStatus, User, Violation
 
 router = APIRouter(prefix="/v1/checkin", tags=["checkin"])
+legacy_router = APIRouter(tags=["checkin-legacy"])
 
 
 class CheckinRequest(BaseModel):
@@ -17,11 +18,7 @@ class CheckinRequest(BaseModel):
 
 
 @router.post("")
-def checkin(
-    payload: CheckinRequest,
-    session: Session = Depends(get_session),
-    current: User = Depends(get_current_user)
-):
+def checkin(payload: CheckinRequest, session: Session = Depends(get_session), current: User = Depends(get_current_user)):
     rsv = session.get(Reservation, payload.reservation_id)
     if not rsv or rsv.user_id != current.id:
         raise HTTPException(status_code=404, detail="Reservation not found")
@@ -40,7 +37,6 @@ def checkin(
 
 @router.post("/sweep-defaults")
 def sweep_defaults(session: Session = Depends(get_session)):
-    # stage2 first-pass: convert pending to default if start+15min passed on same day
     now = datetime.now()
     pending_items = session.exec(select(Reservation).where(Reservation.status == ReservationStatus.pending)).all()
     affected = 0
@@ -60,3 +56,23 @@ def sweep_defaults(session: Session = Depends(get_session)):
 
     session.commit()
     return {"ok": True, "affected": affected}
+
+
+@legacy_router.get("/v1/reservations/sign")
+def legacy_sign(reservation_id: int, session: Session = Depends(get_session), current: User = Depends(get_current_user)):
+    reservation = session.get(Reservation, reservation_id)
+    if not reservation or reservation.user_id != current.id:
+        return {"success": False, "code": 801}
+    if reservation.status == ReservationStatus.active:
+        return {"success": False, "code": 802}
+    if reservation.status == ReservationStatus.canceled:
+        return {"success": False, "code": 803}
+    if reservation.status == ReservationStatus.defaulted:
+        return {"success": False, "code": 804}
+    if reservation.status == ReservationStatus.finished:
+        return {"success": False, "code": 805}
+
+    reservation.status = ReservationStatus.active
+    session.add(reservation)
+    session.commit()
+    return {"success": True, "code": 100}

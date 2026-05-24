@@ -1,4 +1,4 @@
-﻿name: ci
+name: ci
 
 on:
   push:
@@ -14,11 +14,11 @@ jobs:
           python-version: '3.12'
       - name: Install backend deps
         run: |
-          cd StudySeatOps/backend
+          cd backend
           pip install -r requirements.txt
       - name: Run backend tests
         run: |
-          cd StudySeatOps/backend
+          cd backend
           pytest
 
   frontend-build:
@@ -30,6 +30,6 @@ jobs:
           node-version: '22'
       - name: Build frontend
         run: |
-          cd StudySeatOps/frontend
+          cd frontend
           npm install
           npm run build

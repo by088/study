@@ -1,4 +1,4 @@
-﻿from sqlmodel import Session, select
+from sqlmodel import Session, select
 
 from app.core.security import hash_password
 from app.domain.models import Role, Permission, UserRoleLink, RolePermissionLink, StudyRoom, Seat, SystemParameter, User
@@ -43,12 +43,22 @@ def seed_base_data(session: Session) -> None:
 
     room_count = len(session.exec(select(StudyRoom)).all())
     if room_count == 0:
-        room = StudyRoom(campus="主校区", building="教学楼A", name="A-101")
+        # 全校开放自习室
+        room = StudyRoom(campus="主校区", building="教学楼A", name="A-101", open_to_all=True)
         session.add(room)
         session.commit()
         session.refresh(room)
         for idx in range(1, 13):
             session.add(Seat(room_id=room.id, seat_code=f"A101-{idx}", has_power=(idx % 3 == 0), by_window=(idx in [1, 6, 7, 12])))
+        session.commit()
+
+        # 计算机学院专属自习室
+        cs_room = StudyRoom(campus="主校区", building="计算机楼", name="CS-201", department="计算机科学与技术学院", open_to_all=False)
+        session.add(cs_room)
+        session.commit()
+        session.refresh(cs_room)
+        for idx in range(1, 9):
+            session.add(Seat(room_id=cs_room.id, seat_code=f"CS201-{idx}", has_power=(idx % 2 == 0), by_window=(idx <= 2)))
         session.commit()
 
     # demo admin account

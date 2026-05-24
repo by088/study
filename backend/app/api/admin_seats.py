@@ -1,4 +1,6 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -17,14 +19,14 @@ class SeatCreateRequest(BaseModel):
 
 
 class SeatUpdateRequest(BaseModel):
-    by_window: bool | None = None
-    has_power: bool | None = None
-    enabled: bool | None = None
+    by_window: Optional[bool] = None
+    has_power: Optional[bool] = None
+    enabled: Optional[bool] = None
 
 
 @router.get("")
 def list_seats(
-    room_id: int | None = None,
+    room_id: Optional[int] = None,
     session: Session = Depends(get_session),
     _: User = Depends(require_permission("room.manage"))
 ):
@@ -45,7 +47,7 @@ def create_seat(
     ).first()
     if exists:
         raise HTTPException(status_code=409, detail="Seat code exists in room")
-    seat = Seat(**payload.model_dump())
+    seat = Seat(**payload.dict())
     session.add(seat)
     session.commit()
     session.refresh(seat)
@@ -62,7 +64,7 @@ def update_seat(
     seat = session.get(Seat, seat_id)
     if not seat:
         raise HTTPException(status_code=404, detail="Seat not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    for k, v in payload.dict(exclude_unset=True).items():
         setattr(seat, k, v)
     session.add(seat)
     session.commit()
@@ -82,3 +84,4 @@ def delete_seat(
     session.delete(seat)
     session.commit()
     return {"ok": True}
+

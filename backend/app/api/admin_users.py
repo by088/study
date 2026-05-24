@@ -1,4 +1,6 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlmodel import Session, select
 
@@ -15,12 +17,14 @@ class UserCreateRequest(BaseModel):
     name: str
     password: str
     email: EmailStr
+    department: str = None
 
 
 class UserUpdateRequest(BaseModel):
-    name: str | None = None
-    email: EmailStr | None = None
-    credit_score: int | None = None
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    department: Optional[str] = None
+    credit_score: Optional[int] = None
 
 
 @router.get("")
@@ -44,6 +48,7 @@ def create_user(
         name=payload.name,
         password_hash=hash_password(payload.password),
         email=payload.email,
+        department=payload.department,
     )
     session.add(user)
     session.commit()
@@ -62,7 +67,7 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    data = payload.model_dump(exclude_unset=True)
+    data = payload.dict(exclude_unset=True)
     for k, v in data.items():
         setattr(user, k, v)
 
@@ -88,7 +93,7 @@ def delete_user(
 
 @router.get("/violations")
 def list_violations(
-    user_id: str | None = None,
+    user_id: Optional[str] = None,
     session: Session = Depends(get_session),
     _: User = Depends(require_permission("reservation.view"))
 ):
@@ -96,3 +101,4 @@ def list_violations(
     if user_id:
         stmt = stmt.where(Violation.user_id == user_id)
     return session.exec(stmt).all()
+

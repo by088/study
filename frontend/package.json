@@ -1,11 +1,11 @@
-﻿{
+{
   "name": "study-seat-ops-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --configLoader runner",
+    "build": "vite build --configLoader runner",
     "preview": "vite preview"
   },
   "dependencies": {

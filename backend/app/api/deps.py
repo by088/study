@@ -1,4 +1,6 @@
-﻿from fastapi import Depends, Header, HTTPException
+from typing import Optional
+
+from fastapi import Depends, Header, HTTPException
 from sqlmodel import Session, select
 
 from app.core.db import get_session
@@ -7,7 +9,7 @@ from app.domain.models import User, Role, Permission, UserRoleLink, RolePermissi
 
 
 def get_current_user(
-    authorization: str | None = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
     session: Session = Depends(get_session)
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
@@ -42,3 +44,4 @@ def require_permission(permission_code: str):
         return user
 
     return checker
+

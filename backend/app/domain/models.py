@@ -1,5 +1,7 @@
-﻿from enum import Enum
+from enum import Enum
 from datetime import date, time, datetime
+
+from typing import Optional
 
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -27,35 +29,38 @@ class User(SQLModel, table=True):
     name: str = Field(max_length=25)
     password_hash: str = Field(max_length=120)
     email: str = Field(max_length=100)
+    department: Optional[str] = Field(default=None, max_length=60)
     credit_score: int = Field(default=100, ge=0)
     default_count: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class Role(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     code: str = Field(index=True, unique=True, max_length=40)
     name: str = Field(max_length=40)
 
 
 class Permission(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     code: str = Field(index=True, unique=True, max_length=60)
     name: str = Field(max_length=60)
 
 
 class StudyRoom(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     campus: str = Field(max_length=30)
     building: str = Field(max_length=30)
     name: str = Field(max_length=30)
+    department: Optional[str] = Field(default=None, max_length=60)
+    open_to_all: bool = Field(default=True)
     opens_at: str = Field(default="07:00")
     closes_at: str = Field(default="22:00")
     enabled: bool = Field(default=True)
 
 
 class Seat(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     room_id: int = Field(foreign_key="studyroom.id")
     seat_code: str = Field(max_length=20)
     by_window: bool = Field(default=False)
@@ -64,7 +69,7 @@ class Seat(SQLModel, table=True):
 
 
 class Reservation(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     user_id: str = Field(foreign_key="user.id")
     room_id: int = Field(foreign_key="studyroom.id")
     seat_id: int = Field(foreign_key="seat.id")
@@ -72,11 +77,11 @@ class Reservation(SQLModel, table=True):
     start_time: time
     hours: int = Field(ge=1, le=4)
     status: ReservationStatus = Field(default=ReservationStatus.pending)
-    checkin_code: str | None = Field(default=None, max_length=12)
+    checkin_code: Optional[str] = Field(default=None, max_length=12)
 
 
 class Violation(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     reservation_id: int = Field(foreign_key="reservation.id")
     user_id: str = Field(foreign_key="user.id")
     reason: str = Field(max_length=120)
