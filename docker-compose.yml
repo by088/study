@@ -1,12 +1,19 @@
+# ============================================
+# StudySeatOps 容器编排
+# 启动方式：docker-compose up --build
+# ============================================
+
 services:
+  # ---------- 后端服务 ----------
   studyseatops-backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
     container_name: studyseatops-backend
     ports:
       - "8001:8001"
     volumes:
-      - backend-data:/app/data
+      - backend-data:/app/data          # SQLite 数据持久化
     environment:
       - DATABASE_URL=sqlite:///data/studyseatops.db
     restart: unless-stopped
@@ -16,12 +23,16 @@ services:
       timeout: 5s
       retries: 3
 
+  # ---------- 前端服务 ----------
   studyseatops-frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE=                # 留空 = 使用 nginx 反向代理（相对路径）
     container_name: studyseatops-frontend
     ports:
-      - "5173:5173"
+      - "80:80"                         # 浏览器访问 http://localhost 即可
     depends_on:
       - studyseatops-backend
     restart: unless-stopped

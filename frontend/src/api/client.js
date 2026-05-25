@@ -1,7 +1,10 @@
 import axios from "axios";
 
+// 本地开发时直连后端；Docker 部署时通过 nginx 反向代理，用相对路径即可
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+
 const client = axios.create({
-  baseURL: "http://localhost:8001",
+  baseURL: API_BASE,
   timeout: 8000,
 });
 
